@@ -285,6 +285,13 @@ class TranscriptionConfig(Base):
     enable_auto_delegate: bool = True  # Enable automatic delegation for long audio
 
 
+class TavilyConfig(Base):
+    """Tavily search API configuration."""
+
+    api_key: str = ""  # Tavily API key
+    max_results: int = 10  # Maximum number of results to return
+
+
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
 
@@ -293,6 +300,7 @@ class MCPServerConfig(Base):
     env: dict[str, str] = Field(default_factory=dict)  # Stdio: extra env vars
     url: str = ""  # HTTP: streamable HTTP endpoint URL
     headers: dict[str, str] = Field(default_factory=dict)  # HTTP: Custom HTTP Headers
+    tool_timeout: int = 30  # Timeout in seconds for each tool call
     tool_timeout: int = 30  # Seconds before a tool call is cancelled
 
 
@@ -301,6 +309,7 @@ class ToolsConfig(Base):
 
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
+    transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)

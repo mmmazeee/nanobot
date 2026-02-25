@@ -170,3 +170,61 @@ class WebFetchTool(Tool):
         text = re.sub(r'</(p|div|section|article)>', '\n\n', text, flags=re.I)
         text = re.sub(r'<(br|hr)\s*/?>', '\n', text, flags=re.I)
         return _normalize(_strip_tags(text))
+
+
+class TavilySearchTool(Tool):
+    """Search the web using Tavily API."""
+
+    name = "tavily_search"
+    description = "Search the web using Tavily API. Returns comprehensive search results with snippets."
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"},
+            "max_results": {"type": "integer", "description": "Results (1-10)", "minimum": 1, "maximum": 10}
+        },
+        "required": ["query"]
+    }
+
+    def __init__(self, api_key: str | None = None, max_results: int = 10):
+        self.api_key = api_key or os.environ.get("TAVILY_API_KEY", "")
+        self.max_results = max_results
+
+    async def execute(self, query: str, max_results: int | None = None, **kwargs: Any) -> str:
+        if not self.api_key:
+            return "Error: TAVILY_API_KEY not configured"
+
+        try:
+            n = min(max(max_results or self.max_results, 1), 10)
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "query": query,
+                    "max_results": n,
+                    "search_depth": "basic",
+                    "include_answer": False,
+                    "include_raw_content": False,
+                }
+                r = await client.post(
+                    "https://api.tavily.com/search",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=30.0
+                )
+                r.raise_for_status()
+
+            data = r.json()
+            results = data.get("results", [])
+            if not results:
+                return f"No results for: {query}"
+
+            lines = [f"Results for: {query}\n"]
+            for i, item in enumerate(results[:n], 1):
+                lines.append(f"{i}. {item.get('title', '')}\n   {item.get('url', '')}")
+                if content := item.get("content"):
+                    content_preview = content[:200] + "..." if len(content) > 200 else content
+                    lines.append(f"   {content_preview}")
+                if score := item.get("score"):
+                    lines.append(f"   Score: {score:.2f}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"

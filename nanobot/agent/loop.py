@@ -20,14 +20,15 @@ from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
-from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
+from nanobot.agent.tools.transcription import TranscriptionTool
+from nanobot.agent.tools.web import TavilySearchTool, WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
-    from nanobot.config.schema import ChannelsConfig, ExecToolConfig
+    from nanobot.config.schema import ChannelsConfig, ExecToolConfig, TranscriptionConfig
     from nanobot.cron.service import CronService
 
 
@@ -54,6 +55,8 @@ class AgentLoop:
         max_tokens: int = 4096,
         memory_window: int = 100,
         brave_api_key: str | None = None,
+        tavily_api_key: str | None = None,
+        transcription_config: "TranscriptionConfig | None" = None,
         exec_config: ExecToolConfig | None = None,
         cron_service: CronService | None = None,
         restrict_to_workspace: bool = False,
@@ -72,6 +75,8 @@ class AgentLoop:
         self.max_tokens = max_tokens
         self.memory_window = memory_window
         self.brave_api_key = brave_api_key
+        self.tavily_api_key = tavily_api_key
+        self.transcription_config = transcription_config
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
@@ -79,6 +84,7 @@ class AgentLoop:
         self.context = ContextBuilder(workspace)
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
+        self._stop_signals: dict[str, asyncio.Event] = {}
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -87,8 +93,10 @@ class AgentLoop:
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             brave_api_key=brave_api_key,
+            tavily_api_key=tavily_api_key,
+            transcription_config=transcription_config,
             exec_config=self.exec_config,
-            restrict_to_workspace=restrict_to_workspace,
+            restrict_to_workspace=self.restrict_to_workspace,
         )
 
         self._running = False
@@ -112,7 +120,11 @@ class AgentLoop:
             restrict_to_workspace=self.restrict_to_workspace,
         ))
         self.tools.register(WebSearchTool(api_key=self.brave_api_key))
+        if self.tavily_api_key:
+            self.tools.register(TavilySearchTool(api_key=self.tavily_api_key))
         self.tools.register(WebFetchTool())
+        if self.transcription_config and self.transcription_config.enabled:
+            self.tools.register(TranscriptionTool(config=self.transcription_config))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
@@ -457,3 +469,14 @@ class AgentLoop:
         msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
         response = await self._process_message(msg, session_key=session_key, on_progress=on_progress)
         return response.content if response else ""
+
+    def stop_session(self, session_key: str) -> None:
+        """Stop agent execution for a session."""
+        if session_key in self._stop_signals:
+            self._stop_signals[session_key].set()
+
+    def _get_stop_signal(self, session_key: str) -> asyncio.Event:
+        """Get or create stop signal for a session."""
+        if session_key not in self._stop_signals:
+            self._stop_signals[session_key] = asyncio.Event()
+        return self._stop_signals[session_key]
