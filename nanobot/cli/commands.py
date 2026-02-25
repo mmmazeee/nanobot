@@ -193,7 +193,7 @@ def onboard():
     console.print("  1. Add your API key to [cyan]~/.nanobot/config.json[/cyan]")
     console.print("     Get one at: https://openrouter.ai/keys")
     console.print("  2. Chat: [cyan]nanobot agent -m \"Hello!\"[/cyan]")
-    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]")
+    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/mmmazeee/nanobot#-chat-apps[/dim]")
 
 
 
@@ -313,6 +313,8 @@ def gateway(
         max_iterations=config.agents.defaults.max_tool_iterations,
         memory_window=config.agents.defaults.memory_window,
         brave_api_key=config.tools.web.search.api_key or None,
+        tavily_api_key=config.tools.web.search.tavily.api_key or None,
+        transcription_config=config.tools.transcription,
         exec_config=config.tools.exec,
         cron_service=cron,
         restrict_to_workspace=config.tools.restrict_to_workspace,
@@ -470,6 +472,8 @@ def agent(
         max_iterations=config.agents.defaults.max_tool_iterations,
         memory_window=config.agents.defaults.memory_window,
         brave_api_key=config.tools.web.search.api_key or None,
+        tavily_api_key=config.tools.web.search.tavily.api_key or None,
+        transcription_config=config.tools.transcription,
         exec_config=config.tools.exec,
         cron_service=cron,
         restrict_to_workspace=config.tools.restrict_to_workspace,
@@ -577,15 +581,25 @@ def agent(
                             content=user_input,
                         ))
 
-                        with _thinking_ctx():
-                            await turn_done.wait()
+                        try:
+                            with _thinking_ctx():
+                                await turn_done.wait()
+                        except KeyboardInterrupt:
+                            agent_loop.stop_session(f"{cli_channel}:{cli_chat_id}")
+                            console.print("\n[yellow]⚠️ Agent execution stopped[/yellow]")
+                            turn_done.set()
 
                         if turn_response:
                             _print_agent_response(turn_response[0], render_markdown=markdown)
                     except KeyboardInterrupt:
-                        _restore_terminal()
-                        console.print("\nGoodbye!")
-                        break
+                        if not turn_done.is_set():
+                            agent_loop.stop_session(f"{cli_channel}:{cli_chat_id}")
+                            console.print("\n[yellow]⚠️ Agent execution stopped[/yellow]")
+                            turn_done.set()
+                        else:
+                            _restore_terminal()
+                            console.print("\nGoodbye!")
+                            break
                     except EOFError:
                         _restore_terminal()
                         console.print("\nGoodbye!")
@@ -961,6 +975,8 @@ def cron_run(
         max_iterations=config.agents.defaults.max_tool_iterations,
         memory_window=config.agents.defaults.memory_window,
         brave_api_key=config.tools.web.search.api_key or None,
+        tavily_api_key=config.tools.web.search.tavily.api_key or None,
+        transcription_config=config.tools.transcription,
         exec_config=config.tools.exec,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,

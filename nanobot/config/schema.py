@@ -59,6 +59,8 @@ class DiscordConfig(Base):
     allow_from: list[str] = Field(default_factory=list)  # Allowed user IDs
     gateway_url: str = "wss://gateway.discord.gg/?v=10&encoding=json"
     intents: int = 37377  # GUILDS + GUILD_MESSAGES + DIRECT_MESSAGES + MESSAGE_CONTENT
+    reconnect_notification_channel: str = ""  # Channel ID to send reconnect notification
+    reconnect_message_template: str = "🔄 Discord 连接已恢复\\n恢复时间: {time}"  # Message template with {time} placeholder
 
 
 class EmailConfig(Base):
@@ -185,7 +187,7 @@ class AgentDefaults(Base):
     """Default agent configuration."""
 
     workspace: str = "~/.nanobot/workspace"
-    model: str = "anthropic/claude-opus-4-5"
+    model: str = "kimi-k2.5"
     max_tokens: int = 8192
     temperature: float = 0.1
     max_tool_iterations: int = 40
@@ -243,11 +245,19 @@ class GatewayConfig(Base):
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
 
 
+class TavilyConfig(Base):
+    """Tavily search configuration."""
+
+    api_key: str = ""
+    max_results: int = 10
+
+
 class WebSearchConfig(Base):
     """Web search tool configuration."""
 
     api_key: str = ""  # Brave Search API key
     max_results: int = 5
+    tavily: TavilyConfig = Field(default_factory=TavilyConfig)
 
 
 class WebToolsConfig(Base):
@@ -260,6 +270,19 @@ class ExecToolConfig(Base):
     """Shell exec tool configuration."""
 
     timeout: int = 60
+
+
+class TranscriptionConfig(Base):
+    """Transcription tool configuration using WhisperKit (macOS only)."""
+
+    enabled: bool = True
+    model: str = "large-v3"  # Model size: large-v3, medium, small, tiny, base
+    language: str = "auto"  # Language: auto, zh, en, ja, ko, es, fr, de, ru, etc.
+    allowed_formats: list[str] = Field(
+        default_factory=lambda: ["wav", "mp3", "m4a", "flac", "aac", "ogg"]
+    )
+    subagent_threshold: int = 60  # Seconds: delegate to subagent if audio exceeds this duration
+    enable_auto_delegate: bool = True  # Enable automatic delegation for long audio
 
 
 class MCPServerConfig(Base):
@@ -278,6 +301,7 @@ class ToolsConfig(Base):
 
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
+    transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 

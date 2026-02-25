@@ -110,7 +110,9 @@ class TelegramChannel(BaseChannel):
     # Commands registered with Telegram's command menu
     BOT_COMMANDS = [
         BotCommand("start", "Start the bot"),
-        BotCommand("new", "Start a new conversation"),
+        BotCommand("new", "Generate handover and start new conversation"),
+        BotCommand("handover", "Generate handover report only"),
+        BotCommand("takeover", "Load latest handover report"),
         BotCommand("help", "Show available commands"),
     ]
     
@@ -298,7 +300,9 @@ class TelegramChannel(BaseChannel):
             return
         await update.message.reply_text(
             "🐈 nanobot commands:\n"
-            "/new — Start a new conversation\n"
+            "/new — Generate handover and start new conversation\n"
+            "/handover — Generate handover report only\n"
+            "/takeover — Load latest handover report\n"
             "/help — Show available commands"
         )
 

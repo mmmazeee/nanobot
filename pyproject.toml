@@ -8,6 +8,7 @@ authors = [
     {name = "nanobot contributors"}
 ]
 keywords = ["ai", "agent", "chatbot"]
+readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -43,6 +44,11 @@ dependencies = [
     "mcp>=1.26.0,<2.0.0",
     "json-repair>=0.57.0,<1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mmmazeee/nanobot"
+Repository = "https://github.com/mmmazeee/nanobot"
+Issues = "https://github.com/mmmazeee/nanobot/issues"
 
 [project.optional-dependencies]
 dev = [

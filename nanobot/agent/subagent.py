@@ -4,7 +4,7 @@ import asyncio
 import json
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -14,7 +14,11 @@ from nanobot.providers.base import LLMProvider
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
 from nanobot.agent.tools.shell import ExecTool
-from nanobot.agent.tools.web import WebSearchTool, WebFetchTool
+from nanobot.agent.tools.transcription import TranscriptionTool
+from nanobot.agent.tools.web import TavilySearchTool, WebFetchTool, WebSearchTool
+
+if TYPE_CHECKING:
+    from nanobot.config.schema import ExecToolConfig, TranscriptionConfig
 
 
 class SubagentManager:
@@ -35,6 +39,8 @@ class SubagentManager:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         brave_api_key: str | None = None,
+        tavily_api_key: str | None = None,
+        transcription_config: "TranscriptionConfig | None" = None,
         exec_config: "ExecToolConfig | None" = None,
         restrict_to_workspace: bool = False,
     ):
@@ -46,6 +52,8 @@ class SubagentManager:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.brave_api_key = brave_api_key
+        self.tavily_api_key = tavily_api_key
+        self.transcription_config = transcription_config
         self.exec_config = exec_config or ExecToolConfig()
         self.restrict_to_workspace = restrict_to_workspace
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
@@ -113,8 +121,22 @@ class SubagentManager:
                 restrict_to_workspace=self.restrict_to_workspace,
             ))
             tools.register(WebSearchTool(api_key=self.brave_api_key))
+            if self.tavily_api_key:
+                tools.register(TavilySearchTool(api_key=self.tavily_api_key))
             tools.register(WebFetchTool())
-            
+            if self.transcription_config and self.transcription_config.enabled:
+                # Disable auto-delegation for subagent to prevent infinite loops
+                from nanobot.config.schema import TranscriptionConfig
+                subagent_transcription_config = TranscriptionConfig(
+                    enabled=self.transcription_config.enabled,
+                    model=self.transcription_config.model,
+                    language=self.transcription_config.language,
+                    allowed_formats=self.transcription_config.allowed_formats,
+                    subagent_threshold=self.transcription_config.subagent_threshold,
+                    enable_auto_delegate=False,  # Disable delegation in subagent
+                )
+                tools.register(TranscriptionTool(config=subagent_transcription_config))
+
             # Build messages with subagent-specific prompt
             system_prompt = self._build_subagent_prompt(task)
             messages: list[dict[str, Any]] = [
@@ -194,7 +216,7 @@ class SubagentManager:
     ) -> None:
         """Announce the subagent result to the main agent via the message bus."""
         status_text = "completed successfully" if status == "ok" else "failed"
-        
+
         announce_content = f"""[Subagent '{label}' {status_text}]
 
 Task: {task}
@@ -202,8 +224,8 @@ Task: {task}
 Result:
 {result}
 
-Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not mention technical details like "subagent" or task IDs."""
-        
+Please inform the user that the task is complete. Present the full result above clearly. Do not mention technical details like "subagent" or task IDs."""
+
         # Inject as system message to trigger main agent
         msg = InboundMessage(
             channel="system",
@@ -211,9 +233,9 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not men
             chat_id=f"{origin['channel']}:{origin['chat_id']}",
             content=announce_content,
         )
-        
+
         await self.bus.publish_inbound(msg)
-        logger.debug("Subagent [{}] announced result to {}:{}", task_id, origin['channel'], origin['chat_id'])
+        logger.info("Subagent [{}] announced result to {}:{} (status: {})", task_id, origin['channel'], origin['chat_id'], status)
     
     def _build_subagent_prompt(self, task: str) -> str:
         """Build a focused system prompt for the subagent."""

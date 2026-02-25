@@ -49,12 +49,17 @@ class BaseChannel(ABC):
         pass
     
     @abstractmethod
-    async def send(self, msg: OutboundMessage) -> None:
+    async def send(self, msg: OutboundMessage) -> dict[str, Any] | None:
         """
         Send a message through this channel.
-        
+
         Args:
             msg: The message to send.
+
+        Returns:
+            Optional status dict with details about the send operation.
+            Returns None for simple text messages (backward compatible).
+            Returns dict for media messages with success/failure details.
         """
         pass
     

@@ -100,9 +100,36 @@ class MessageTool(Tool):
         )
 
         try:
-            await self._send_callback(msg)
+            result = await self._send_callback(msg)
             self._sent_in_turn = True
-            media_info = f" with {len(media)} attachments" if media else ""
-            return f"Message sent to {channel}:{chat_id}{media_info}"
+
+            if isinstance(result, dict):
+                parts = []
+
+                if result.get("success") and result.get("text_sent"):
+                    parts.append(f"✅ Message sent to {channel}:{chat_id}")
+
+                sent = result.get("sent_files", [])
+                if sent:
+                    parts.append(f"✅ Attached {len(sent)} file(s)")
+
+                failed = result.get("failed_files", [])
+                if failed:
+                    error_list = "\n".join([
+                        f"  ❌ {path}: {reason}"
+                        for path, reason in failed
+                    ])
+                    parts.append(f"❌ Failed to attach {len(failed)} file(s):\n{error_list}")
+
+                error_msg = result.get("message", "")
+                if error_msg and not result.get("success"):
+                    parts.append(f"❌ Error: {error_msg}")
+
+                return "\n".join(parts) if parts else "Error: Unknown status"
+            else:
+                media_count = len(media) if media else 0
+                media_info = f" with {media_count} attachments" if media_count > 0 else ""
+                return f"Message sent to {channel}:{chat_id}{media_info}"
+
         except Exception as e:
             return f"Error sending message: {str(e)}"
